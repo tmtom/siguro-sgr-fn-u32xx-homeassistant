@@ -1,0 +1,6 @@
+# local scratch: raw MQTT captures (contain real network info - never commit)
+work/
+
+# python
+__pycache__/
+*.pyc

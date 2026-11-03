@@ -1,0 +1,281 @@
+blueprint:
+  name: "Tasmota Discovery: Siguro SGR-FN-U32xx Tower Fan"
+  source_url: https://github.com/tmtom/siguro-sgr-fn-u32xx-homeassistant/blob/main/blueprints/siguro-sgr-fn-u32xx-fan-discovery.yaml
+  description: |
+    Set up a Siguro SGR-FN-U32xx tower fan (SGR-FN-U320W / SGR-FN-U321Y)
+    running Tasmota as a proper Home Assistant **fan** entity via MQTT
+    discovery. No configuration.yaml editing needed.
+
+    Creates, grouped as a single Siguro SGR-FN-U32xx device identified by the
+    Tasmota MAC address:
+
+    - a `fan` entity: power, 12 speeds, presets (Normal / Natural / Night),
+      oscillation
+    - `switch` entities: ionizer, display
+    - `number` entities: auto-off timer (0-12 h, active while running) and
+      auto-on timer (0-12 h, active in standby) - the fan's two separate timers
+    - a `sensor` entity: timer countdown (minutes remaining)
+
+    Verified on a Siguro SGR-FN-U32xx (Tasmota 16.0.0, ESP8266): the speed data
+    point runs 1-12 raw (= the numbers on the fan display).
+
+    **Tasmota setup required** (once per device, in the Tasmota console - full
+    detail in tasmota-config.md of this repository):
+
+    1. Select the TuyaMCU module (or activate a template equivalent to it):
+
+       ```
+       Module 54
+       ```
+
+    2. Map the Tuya data points to Tasmota components
+       (POWER1 = power, POWER2 = oscillation, POWER3 = ionizer,
+       POWER4 = display; speed/mode/timer are driven via TuyaSend commands
+       from this blueprint):
+
+       ```
+       Backlog TuyaMCU 11,1; TuyaMCU 12,5; TuyaMCU 13,8; TuyaMCU 14,12
+       ```
+
+    3. Republish state changes (also those made with the fan's own buttons) to
+       MQTT as retained messages, so Home Assistant stays in sync and state
+       survives restarts:
+
+       ```
+       Rule3 on tuyareceived#dptype2id2 do publish2 stat/%topic%/speed %value% endon on tuyareceived#dptype4id3 do publish2 stat/%topic%/mode %value% endon on tuyareceived#dptype2id103 do publish2 stat/%topic%/timer_off %value% endon on tuyareceived#dptype2id102 do publish2 stat/%topic%/timer_on %value% endon on tuyareceived#dptype2id14 do publish2 stat/%topic%/timer_left %value% endon
+       Rule3 1
+       ```
+
+    4. Retain the native power states too:
+
+       ```
+       Backlog StateRetain 1; PowerRetain 1
+       ```
+
+    5. Optional - a speed slider in the Tasmota web UI (dimmer trick, quirks
+       in tasmota-config.md section 6; apply after step 2, device restarts):
+
+       ```
+       Backlog TuyaMCU 21,2; DimmerRange 1,12
+       ```
+
+    Requires the MQTT integration (any Home Assistant 2022.8+). For multiple
+    fans, create one automation from this blueprint per fan.
+
+    Based on the "Tasmota Discovery" blueprint pattern (tasmota/blueprints) and
+    the Duux DXCF10/DXCF12 project by tmtom.
+  domain: automation
+  input:
+    fan_name:
+      name: "Name"
+      description: "Friendly name for the fan in Home Assistant."
+      default: "Siguro SGR-FN-U32xx Fan"
+      selector:
+        text:
+    topic:
+      name: "Tasmota MQTT topic"
+      description: >
+        MQTT topic of the Tasmota device. Found in the web UI "Information" menu
+        under "MQTT Topic", or with the `Topic` command.
+      selector:
+        text:
+    mac_address:
+      name: "Tasmota MAC address"
+      description: >
+        MAC address of the Tasmota device, e.g. AA:BB:CC:DD:EE:FF. Found in the
+        web UI "Information" menu. Used to identify the device in Home Assistant.
+      selector:
+        text:
+
+mode: single
+max_exceeded: silent
+
+variables:
+  fan_name: !input fan_name
+  topic: !input topic
+  mac_address: !input mac_address
+  macaddr: '{{- mac_address.split(":") | join | lower -}}'
+  # note: in the payload templates below, inner command templates are built by
+  # string concatenation, because the final discovery payload only gets
+  # `value` in scope when HA renders them at command time - blueprint
+  # variables must NOT be referenced inside them
+  payload_fan: >-
+    {{ {"name": fan_name,
+        "unique_id": macaddr ~ "_fan",
+        "command_topic": "cmnd/" ~ topic ~ "/POWER1",
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "state_topic": "stat/" ~ topic ~ "/POWER1",
+        "percentage_command_topic": "cmnd/" ~ topic ~ "/TuyaSend2",
+        "percentage_command_template": "{{ '2,' ~ (value | int) }}",
+        "percentage_state_topic": "stat/" ~ topic ~ "/speed",
+        "percentage_value_template": "{{ value | int }}",
+        "speed_range_min": 1,
+        "speed_range_max": 12,
+        "preset_mode_command_topic": "cmnd/" ~ topic ~ "/TuyaSend4",
+        "preset_mode_command_template": "{{ '3,' ~ {'Normal':'0', 'Natural':'1', 'Night':'2'}[value] }}",
+        "preset_mode_state_topic": "stat/" ~ topic ~ "/mode",
+        "preset_mode_value_template": "{{ {'0':'Normal', '1':'Natural', '2':'Night'}[value] }}",
+        "preset_modes": ["Normal", "Natural", "Night"],
+        "oscillation_command_topic": "cmnd/" ~ topic ~ "/POWER2",
+        "oscillation_state_topic": "stat/" ~ topic ~ "/POWER2",
+        "payload_oscillation_on": "ON",
+        "payload_oscillation_off": "OFF",
+        "availability_topic": "tele/" ~ topic ~ "/LWT",
+        "payload_available": "Online",
+        "payload_not_available": "Offline",
+        "device": {"identifiers": ["siguro_" ~ macaddr],
+                   "connections": [["mac", macaddr]],
+                   "name": fan_name,
+                   "manufacturer": "Siguro",
+                   "model": "SGR-FN-U32xx (tower fan)",
+                   "sw_version": "Tasmota"}} | to_json }}
+  payload_ionizer: >-
+    {{ {"name": fan_name ~ " Ionizer",
+        "unique_id": macaddr ~ "_ionizer",
+        "icon": "mdi:weather-windy",
+        "command_topic": "cmnd/" ~ topic ~ "/POWER3",
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "state_topic": "stat/" ~ topic ~ "/POWER3",
+        "availability_topic": "tele/" ~ topic ~ "/LWT",
+        "payload_available": "Online",
+        "payload_not_available": "Offline",
+        "device": {"identifiers": ["siguro_" ~ macaddr],
+                   "connections": [["mac", macaddr]],
+                   "name": fan_name,
+                   "manufacturer": "Siguro",
+                   "model": "SGR-FN-U32xx (tower fan)",
+                   "sw_version": "Tasmota"}} | to_json }}
+  payload_display: >-
+    {{ {"name": fan_name ~ " Display",
+        "unique_id": macaddr ~ "_display",
+        "icon": "mdi:monitor",
+        "command_topic": "cmnd/" ~ topic ~ "/POWER4",
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "state_topic": "stat/" ~ topic ~ "/POWER4",
+        "availability_topic": "tele/" ~ topic ~ "/LWT",
+        "payload_available": "Online",
+        "payload_not_available": "Offline",
+        "device": {"identifiers": ["siguro_" ~ macaddr],
+                   "connections": [["mac", macaddr]],
+                   "name": fan_name,
+                   "manufacturer": "Siguro",
+                   "model": "SGR-FN-U32xx (tower fan)",
+                   "sw_version": "Tasmota"}} | to_json }}
+  payload_timer_off: >-
+    {{ {"name": fan_name ~ " Auto-off Timer",
+        "unique_id": macaddr ~ "_off_timer",
+        "state_topic": "stat/" ~ topic ~ "/timer_off",
+        "command_topic": "cmnd/" ~ topic ~ "/TuyaSend2",
+        "command_template": "{{ '103,' ~ (value | int) }}",
+        "min": 0,
+        "max": 12,
+        "step": 1,
+        "mode": "box",
+        "device_class": "duration",
+        "unit_of_measurement": "h",
+        "availability_topic": "tele/" ~ topic ~ "/LWT",
+        "payload_available": "Online",
+        "payload_not_available": "Offline",
+        "device": {"identifiers": ["siguro_" ~ macaddr],
+                   "connections": [["mac", macaddr]],
+                   "name": fan_name,
+                   "manufacturer": "Siguro",
+                   "model": "SGR-FN-U32xx (tower fan)",
+                   "sw_version": "Tasmota"}} | to_json }}
+  payload_timer_on: >-
+    {{ {"name": fan_name ~ " Auto-on Timer",
+        "unique_id": macaddr ~ "_on_timer",
+        "state_topic": "stat/" ~ topic ~ "/timer_on",
+        "command_topic": "cmnd/" ~ topic ~ "/TuyaSend2",
+        "command_template": "{{ '102,' ~ (value | int) }}",
+        "min": 0,
+        "max": 12,
+        "step": 1,
+        "mode": "box",
+        "device_class": "duration",
+        "unit_of_measurement": "h",
+        "availability_topic": "tele/" ~ topic ~ "/LWT",
+        "payload_available": "Online",
+        "payload_not_available": "Offline",
+        "device": {"identifiers": ["siguro_" ~ macaddr],
+                   "connections": [["mac", macaddr]],
+                   "name": fan_name,
+                   "manufacturer": "Siguro",
+                   "model": "SGR-FN-U32xx (tower fan)",
+                   "sw_version": "Tasmota"}} | to_json }}
+  payload_timer_left: >-
+    {{ {"name": fan_name ~ " Timer Countdown",
+        "unique_id": macaddr ~ "_timer_left",
+        "icon": "mdi:timer-sand",
+        "state_topic": "stat/" ~ topic ~ "/timer_left",
+        "unit_of_measurement": "min",
+        "device_class": "duration",
+        "state_class": "measurement",
+        "availability_topic": "tele/" ~ topic ~ "/LWT",
+        "payload_available": "Online",
+        "payload_not_available": "Offline",
+        "device": {"identifiers": ["siguro_" ~ macaddr],
+                   "connections": [["mac", macaddr]],
+                   "name": fan_name,
+                   "manufacturer": "Siguro",
+                   "model": "SGR-FN-U32xx (tower fan)",
+                   "sw_version": "Tasmota"}} | to_json }}
+
+trigger_variables:
+  topic: !input topic
+
+trigger:
+  - platform: homeassistant
+    event: start
+  - platform: mqtt
+    topic: '{{ "tele/" ~ topic ~ "/LWT" }}'
+    payload: "Online"
+
+action:
+  - service: mqtt.publish
+    data:
+      topic: "homeassistant/fan/{{ macaddr }}/config"
+      payload: "{{ payload_fan }}"
+      retain: true
+  - service: mqtt.publish
+    data:
+      topic: "homeassistant/switch/{{ macaddr }}/ionizer/config"
+      payload: "{{ payload_ionizer }}"
+      retain: true
+  - service: mqtt.publish
+    data:
+      topic: "homeassistant/switch/{{ macaddr }}/display/config"
+      payload: "{{ payload_display }}"
+      retain: true
+  - service: mqtt.publish
+    data:
+      topic: "homeassistant/number/{{ macaddr }}/off_timer/config"
+      payload: "{{ payload_timer_off }}"
+      retain: true
+  - service: mqtt.publish
+    data:
+      topic: "homeassistant/number/{{ macaddr }}/on_timer/config"
+      payload: "{{ payload_timer_on }}"
+      retain: true
+  - service: mqtt.publish
+    data:
+      topic: "homeassistant/sensor/{{ macaddr }}/timer_left/config"
+      payload: "{{ payload_timer_left }}"
+      retain: true
+  - delay:
+      seconds: 5
+  # Retained state publishes (publish2 in the Tasmota rules) restore all states
+  # after a restart. This query is a harmless belt-and-braces refresher: on this
+  # MCU TuyaSend0 makes the firmware report all data points, which the rules
+  # republish (retained).
+  - service: mqtt.publish
+    data:
+      topic: "cmnd/{{ topic }}/TuyaSend0"
+      payload: ""
+  - service: mqtt.publish
+    data:
+      topic: "cmnd/{{ topic }}/POWER1"
+      payload: ""
