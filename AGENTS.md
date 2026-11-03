@@ -99,7 +99,8 @@ Full list in `tasmota-config.md` §5. The load-bearing ones for the HA package:
 3. dpId 14 is a live countdown in minutes shared by both timers; writes ignored.
 4. `TuyaSend0`/`TuyaSend8` **do** elicit full state dumps on this MCU (unlike
    the Duux one) — use `TuyaSend0` as the HA-start state refresher.
-5. Retained publishes solve HA-restart sync (verified with a fresh subscriber).
+5. Retained publishes solve HA-restart sync (verified with a fresh subscriber;
+   HA-restart state restore also confirmed live in HA on 2026-11-03).
 6. Night mode forces speed 3; Natural mode varies speed within a band
    (1–4 / 5–8 / 9–12). Speed changes don't reset the mode.
 

@@ -10,8 +10,8 @@ so it installs **without editing `configuration.yaml`**.
   **timers** (auto-off 0–12 h and auto-on 0–12 h) and a **countdown** sensor
 - **100% local** — no Siguro/Tuya cloud, no account, no phone app
 - One-click install via an **MQTT-discovery blueprint** (no YAML on the HA side)
-- Live-tested in Home Assistant: all controls, entity states and panel-button
-  sync; state survives HA restarts (retained MQTT messages)
+- Live-tested in Home Assistant: all controls, entity states, panel-button
+  sync and state restore across HA restarts (retained MQTT messages)
 
 | HA feature            | Fan function                   |
 | --------------------- | ------------------------------ |
