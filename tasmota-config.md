@@ -146,10 +146,11 @@ Assistant uses**: discovery and state travel over one broker, and a mismatch
 makes the entities appear but stay "unavailable". Configure with `MqttHost`,
 `MqttPort`, and `MqttUser`/`MqttPassword` if the broker requires authentication.
 
-**8. Optional but recommended: web-UI speed slider** (adopted in this
-installation) — maps the speed to Tasmota's dimmer so the web UI shows a
-slider. Apply *after* step 2 (the device restarts once, and `DimmerRange`
-only works after that restart). Full details and quirks in §6:
+**8. Optional: web-UI speed slider** (**not used on this installation
+anymore** — applied earlier, removed 2026-11-05; see §6) — maps the speed to
+Tasmota's dimmer so the web UI shows a slider. Apply *after* step 2 (the
+device restarts once, and `DimmerRange` only works after that restart). Full
+details, quirks and the reason for removal in §6:
 
 ```
 Backlog TuyaMCU 21,2; DimmerRange 1,12
@@ -231,7 +232,7 @@ Command topics:
     switched off (observed once when the ionizer was switched on right after
     `display off`). A plain `POWER4 OFF` keeps the display dark.
 
-## 6. Web-UI speed slider (dimmer mapping) — optional, kept here
+## 6. Web-UI speed slider (dimmer mapping) — optional, removed here
 
 The "dimmer trick" (used e.g. by *newadventuresinwi-fi* for ceiling fans) maps
 the speed data point to Tasmota's dimmer component so the **Tasmota web UI
@@ -240,6 +241,13 @@ shows a slider** for the speed:
 ```
 Backlog TuyaMCU 21,2; DimmerRange 1,12
 ```
+
+> **Status on this installation: removed (2026-11-05)** — `TuyaMCU 21,0` was
+> applied (device restarts), because of downside 4 below. `DimmerRange 1,12`
+> is left set but inert. Verified after the removal: `TuyaMCU` reports only
+> the four relay mappings, `STATE` no longer contains `Dimmer`, and the Tasmota
+> discovery payload advertises `rl:[1,1,1,1]`, `lk:0`, `lt_st:0` (all channels
+> = switch, no light).
 
 - `TuyaMCU 21,2` maps fnId 21 (Dimmer1) to speed dpId 2. **The device restarts
   once** (the light driver activates), and only after that restart is
@@ -266,6 +274,18 @@ Backlog TuyaMCU 21,2; DimmerRange 1,12
    stored dimmer at boot. It queries the MCU at startup (product-info
    handshake + full state dump), the MCU's stored speed wins, and the light
    syncs from the report (stored `Dimmer` 70 % snapped back to 55 % = raw 7).
+4. **The light leaks into Home Assistant** when the device is also added to
+   the native **Tasmota integration** (the case on this installation): the
+   discovery payload `tasmota/discovery/<mac>/config` advertises POWER4 as a
+   light channel (`rl:[1,1,1,2]`, `lk:1`, `lt_st:1`), so HA creates a
+   `light.<device>` entity whose on/off **is the display switch** — and it
+   lands in the room's "Lights" sections, where it reads as a light switch for
+   the display. (The blueprint's own Display switch is a plain `switch` and
+   unaffected; the duplicate light entity is what confuses the UI. Verified
+   2026-11-05; after removing the mapping the same payload reads
+   `rl:[1,1,1,1]`, `lk:0`, `lt_st:0`.) If you keep the mapping, disable that
+   `light.…` entity in HA. Do **not** try `SetOption30 1` here — that
+   announces *all* relays as lights and only makes it worse.
 
 To remove the mapping again (back to §3 behaviour): `TuyaMCU 21,0` (device
 restarts). `DimmerRange` then becomes inert.
@@ -290,6 +310,14 @@ LWT topic `tele/<topic>/LWT` is not `Online` — check the device is connected.
 Not expected on this unit (dpId 2 runs 1..12 raw = display). If a different
 unit behaves differently, check what the MCU reports when the display shows
 "1" (`TuyaSend0`) and adjust the templates accordingly.
+
+**Display appears as a *light* in Home Assistant**
+The optional dimmer mapping (§6) makes Tasmota's light component bind to
+POWER4 = display, and the native Tasmota integration then creates a
+`light.<device>` entity for it (it ends up in the room's lights). Fix: remove
+the mapping (`TuyaMCU 21,0`, device restarts) or disable that entity in HA.
+The blueprint's own Display switch is always a plain `switch` and needs no
+fix.
 
 **Removing / re-adding**
 Delete the automation, then clear the retained discovery messages from the

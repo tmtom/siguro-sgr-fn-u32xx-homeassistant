@@ -84,10 +84,13 @@ records a capture to JSON for later analysis. Keep raw captures in `work/`
   timer_on|timer_left` (plain values, `publish2` = retained).
 - `StateRetain 1`, `PowerRetain 1` — native `POWER1..4` retained too.
 - `SetOption66 0` — no raw `TuyaReceived` noise on MQTT.
-- Optional (applied and kept in this installation): `TuyaMCU 21,2` +
+- Optional, **removed on this installation (2026-11-05)**: `TuyaMCU 21,2` +
   `DimmerRange 1,12` = speed slider in the Tasmota web UI. Quirks documented
-  in `tasmota-config.md` §6 (light hijacks the highest relay = display; boot
-  is safe). Remove with `TuyaMCU 21,0` if undesired.
+  in `tasmota-config.md` §6 — notably the light hijacks the highest relay
+  (= display) and, with the native Tasmota integration in HA, the display
+  leaks into HA as a `light.…` entity (shown among the room's lights).
+  Removed with `TuyaMCU 21,0` (verified: discovery `rl:[1,1,1,1]`, `lk:0`,
+  `lt_st:0`, no `Dimmer` in STATE); `DimmerRange 1,12` remains set but inert.
 
 ## Verified behaviours (empirically, via MQTT capture — don't re-litigate)
 
@@ -103,6 +106,13 @@ Full list in `tasmota-config.md` §5. The load-bearing ones for the HA package:
    HA-restart state restore also confirmed live in HA on 2026-11-03).
 6. Night mode forces speed 3; Natural mode varies speed within a band
    (1–4 / 5–8 / 9–12). Speed changes don't reset the mode.
+7. With the dimmer trick active, Tasmota's Tasmota-integration discovery
+   (`tasmota/discovery/<mac>/config`) advertises the display relay as a
+   **light** channel (`rl:[1,1,1,2]`, `lk:1`, `lt_st:1`) and HA shows a
+   display-bound `light.…` entity among the room's lights; without it the
+   payload is `rl:[1,1,1,1]`, `lk:0`, `lt_st:0` (verified 2026-11-05,
+   before/after `TuyaMCU 21,0`). `SetOption30` is a red herring: `1`
+   announces *all* relays as lights.
 
 ## HA-side design (what the package contains)
 

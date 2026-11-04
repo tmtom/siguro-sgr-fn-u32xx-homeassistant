@@ -53,7 +53,11 @@ blueprint:
        ```
 
     5. Optional - a speed slider in the Tasmota web UI (dimmer trick, quirks
-       in tasmota-config.md section 6; apply after step 2, device restarts):
+       in tasmota-config.md section 6; apply after step 2, device restarts).
+       Caution: if the device is also added to the native Tasmota integration
+       in HA, Tasmota then advertises the display as a *light* and a
+       display-bound `light.…` entity shows up among your room's lights - in
+       that case skip this step (or undo it with `TuyaMCU 21,0`):
 
        ```
        Backlog TuyaMCU 21,2; DimmerRange 1,12

@@ -110,6 +110,11 @@ mosquitto_pub -h <broker> -r -t 'homeassistant/sensor/<macaddr>/timer_left/confi
   as with the fan's own buttons. The countdown sensor shows the active timer.
 - Night mode forces the speed down to 3; Natural mode varies the speed within
   the band of the set speed (1–4 / 5–8 / 9–12). Both are fan behaviours.
+- **If you also use the native Tasmota integration in HA**, skip the optional
+  web-UI speed slider from [`tasmota-config.md`](tasmota-config.md#6-web-ui-speed-slider-dimmer-mapping--optional-removed-here)
+  (or remove it again with `TuyaMCU 21,0`): Tasmota then advertises the
+  display as a *light*, and HA shows a second, display-bound light entity in
+  the room's lights. The blueprint's Display switch is unaffected.
 
 Full detail on these and other verified behaviours: `tasmota-config.md` §5.
 
